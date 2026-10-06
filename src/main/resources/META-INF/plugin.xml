@@ -1,0 +1,75 @@
+<idea-plugin>
+    <id>com.github.nihaiden.ghostty</id>
+    <name>Ghostty Terminal</name>
+    <vendor url="https://github.com/nihaiden/libghostty-jetbrains">nihaiden</vendor>
+
+    <description><![CDATA[
+    A terminal for JetBrains IDEs powered by <a href="https://ghostty.org">libghostty</a>,
+    the terminal emulation core of the Ghostty terminal.
+    <ul>
+      <li>libghostty-vt does all parsing and terminal state: xterm compatibility, Kitty keyboard protocol,
+          synchronized output, grapheme clustering, reflow on resize, scrollback, OSC 8 hyperlinks</li>
+      <li>Fast native rendering of libghostty's render state, geometric box drawing</li>
+      <li>Colors follow the IDE console scheme, or load any Ghostty theme</li>
+      <li>Find in scrollback, clickable URLs and file:line links that open in the editor</li>
+      <li>Program notifications (OSC 9), progress (OSC 9;4) and clipboard (OSC 52) support</li>
+    </ul>
+    Open it from <b>View | Tool Windows | Ghostty</b> or <b>Open in Ghostty Terminal</b> in the Project view.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Ghostty"
+                    anchor="bottom"
+                    icon="/icons/ghostty.svg"
+                    canCloseContents="true"
+                    factoryClass="com.github.nihaiden.ghostty.toolwindow.GhosttyToolWindowFactory"/>
+        <applicationConfigurable parentId="tools"
+                                 id="ghostty.terminal"
+                                 displayName="Ghostty Terminal"
+                                 instance="com.github.nihaiden.ghostty.settings.GhosttyConfigurable"/>
+        <notificationGroup id="Ghostty Terminal" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <action id="Ghostty.NewTab"
+                class="com.github.nihaiden.ghostty.actions.NewTabAction"
+                text="New Ghostty Tab"
+                description="Open a new Ghostty terminal tab"
+                icon="AllIcons.General.Add">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="Ghostty.OpenIn"
+                class="com.github.nihaiden.ghostty.actions.OpenInGhosttyAction"
+                text="Open in Ghostty Terminal"
+                description="Open a Ghostty terminal in this directory">
+            <add-to-group group-id="RevealGroup" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </action>
+
+        <group id="Ghostty.TerminalPopup" popup="false">
+            <action id="Ghostty.Copy" class="com.github.nihaiden.ghostty.actions.CopyAction"
+                    text="Copy" icon="AllIcons.Actions.Copy"/>
+            <action id="Ghostty.Paste" class="com.github.nihaiden.ghostty.actions.PasteAction"
+                    text="Paste" icon="AllIcons.Actions.MenuPaste"/>
+            <action id="Ghostty.SelectAll" class="com.github.nihaiden.ghostty.actions.SelectAllAction"
+                    text="Select All"/>
+            <separator/>
+            <action id="Ghostty.Find" class="com.github.nihaiden.ghostty.actions.FindAction"
+                    text="Find…" icon="AllIcons.Actions.Find"/>
+            <action id="Ghostty.Clear" class="com.github.nihaiden.ghostty.actions.ClearBufferAction"
+                    text="Clear Buffer"/>
+            <action id="Ghostty.ResetZoom" class="com.github.nihaiden.ghostty.actions.ResetZoomAction"
+                    text="Reset Font Size"/>
+            <separator/>
+            <reference ref="Ghostty.NewTab"/>
+            <action id="Ghostty.CloseTab" class="com.github.nihaiden.ghostty.actions.CloseTabAction"
+                    text="Close Tab"/>
+            <separator/>
+            <action id="Ghostty.Settings" class="com.github.nihaiden.ghostty.actions.OpenSettingsAction"
+                    text="Ghostty Settings…" icon="AllIcons.General.Settings"/>
+        </group>
+    </actions>
+</idea-plugin>

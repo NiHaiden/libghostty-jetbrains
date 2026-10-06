@@ -1,0 +1,16 @@
+.{
+    .name = .ghostty_jb,
+    .version = "0.1.0",
+    .fingerprint = 0x32d920784787675b,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        // Pinned via the git submodule at vendor/ghostty.
+        .ghostty = .{ .path = "vendor/ghostty", .lazy = true },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "test",
+    },
+}

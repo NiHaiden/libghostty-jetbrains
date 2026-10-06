@@ -1,0 +1,17 @@
+# Gradle / IntelliJ Platform
+.gradle/
+build/
+.intellijPlatform/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+out/
+
+# Zig / native
+native/zig-out/
+native/.zig-cache/
+native/zig-pkg/
+# Built per-platform libraries (produced by native/scripts/build-all.sh or CI)
+native/dist/
