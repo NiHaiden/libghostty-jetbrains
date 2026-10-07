@@ -120,7 +120,12 @@ fn keys() {
     assert_eq!(key(&mut t, key::ARROW_UP, 0, None), "\x1b[A");
     assert_eq!(key(&mut t, key::ARROW_RIGHT, mods::CTRL, None), "\x1b[1;5C");
     assert_eq!(key(&mut t, key::BACKSPACE, 0, None), "\x7f");
+    // On macOS, Alt is Option and composes characters unless "option as alt" is on.
+    let alt_a = if cfg!(target_os = "macos") { "a" } else { "\x1ba" };
+    assert_eq!(key(&mut t, key::A, mods::ALT, Some("a")), alt_a);
+    t.set_option(opt::OPTION_AS_ALT, 1);
     assert_eq!(key(&mut t, key::A, mods::ALT, Some("a")), "\x1ba");
+    t.set_option(opt::OPTION_AS_ALT, 0);
     t.write(b"\x1b[?1h"); // application cursor keys
     assert_eq!(key(&mut t, key::ARROW_UP, 0, None), "\x1bOA");
     t.write(b"\x1b[>1u"); // Kitty keyboard protocol
