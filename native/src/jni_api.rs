@@ -130,6 +130,9 @@ fn mods(m: jint) -> u16 {
 
 macro_rules! export {
     ($($sig:tt)*) => {
+        // jni 0.22.4's generated wrapper calls `AtomicBool::fetch_update`,
+        // deprecated since Rust 1.99; nothing to fix on our side.
+        #[allow(deprecated)]
         const _: () = {
             let _ = native_method! {
                 java_type = "com.github.nihaiden.ghostty.vt.GhosttyNative",

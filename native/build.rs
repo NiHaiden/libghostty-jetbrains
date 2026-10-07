@@ -62,12 +62,16 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to run `{zig} build` (is Zig 0.16 installed?): {e}"));
     assert!(status.success(), "`zig build` for libghostty-vt failed ({status})");
 
-    let lib_dir = prefix.join("lib");
-    normalize_archive_names(&lib_dir);
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
     // libghostty-vt first: it references simdutf and highway. These are
     // built without libc++, so only the C library is needed besides them.
-    for lib in ["ghostty-vt-static", "simdutf", "highway"] {
+    let libs = ["ghostty-vt-static", "simdutf", "highway"];
+    let mut lib_dir = prefix.join("lib");
+    normalize_archive_names(&lib_dir);
+    if target.contains("apple") && env::var("HOST").is_ok_and(|h| h.contains("apple")) {
+        lib_dir = rewrite_for_apple_ld(&lib_dir, &out.join("ghostty-vt-apple"), &libs);
+    }
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    for lib in libs {
         println!("cargo:rustc-link-lib=static={lib}");
     }
     if target.contains("apple") {
@@ -92,4 +96,27 @@ fn normalize_archive_names(dir: &Path) {
             let _ = fs::copy(&path, dir.join(format!("lib{stem}.a")));
         }
     }
+}
+
+/// Apple's linker rejects the archives Zig writes ("64-bit mach-o member not
+/// 8-byte aligned"). Rewrite them with Apple's own tools, the same way
+/// Ghostty's build does (vendor/ghostty/src/build/LibtoolStep.zig): ranlib
+/// normalizes the layout, libtool writes a clean archive. Only needed when
+/// linking with Apple's ld; Zig's linker (cargo-zigbuild) reads them fine.
+fn rewrite_for_apple_ld(src: &Path, dst: &Path, libs: &[&str]) -> PathBuf {
+    fs::create_dir_all(dst).expect("create archive dir");
+    for lib in libs {
+        let name = format!("lib{lib}.a");
+        let tmp = dst.join(format!("ranlib-{name}"));
+        fs::copy(src.join(&name), &tmp).unwrap_or_else(|e| panic!("copy {name}: {e}"));
+        run(Command::new("/usr/bin/ranlib").arg(&tmp));
+        let _ = fs::remove_file(dst.join(&name));
+        run(Command::new("libtool").args(["-static", "-o"]).arg(dst.join(&name)).arg(&tmp));
+    }
+    dst.to_path_buf()
+}
+
+fn run(cmd: &mut Command) {
+    let status = cmd.status().unwrap_or_else(|e| panic!("failed to run {cmd:?}: {e}"));
+    assert!(status.success(), "{cmd:?} failed ({status})");
 }
