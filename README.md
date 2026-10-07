@@ -185,7 +185,9 @@ native/scripts/build-all.sh          # -> native/dist/{linux,darwin,windows}-{x6
 `buildPlugin` packages whatever is in `native/dist`. CI
 ([`.github/workflows/build.yml`](.github/workflows/build.yml)) lints and tests the crate,
 cross-builds Linux and Windows with cargo-zigbuild, builds macOS natively with Apple's
-toolchain, runs the binding tests on Linux, macOS arm64, Windows x64/arm64 and Linux arm64,
+toolchain, runs a JNI smoke test of each shipped library on Linux x64/arm64, macOS arm64 and
+Windows x64/arm64 (`native/smoke/`, plain JDK) plus the Kotlin binding tests where the
+IntelliJ test harness runs (not Windows arm64),
 runs the JetBrains Plugin Verifier and attaches the plugin zip to tagged releases.
 
 During development you can point the plugin at any build of the library with

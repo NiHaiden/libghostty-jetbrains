@@ -159,7 +159,23 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Plain-JDK JNI smoke test of the shipped library (runs everywhere).
+      - name: Smoke test the shipped library
+        shell: bash
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) lib=linux-x64/libghostty_jb.so ;;
+            Linux-ARM64) lib=linux-aarch64/libghostty_jb.so ;;
+            macOS-X64) lib=darwin-x64/libghostty_jb.dylib ;;
+            macOS-ARM64) lib=darwin-aarch64/libghostty_jb.dylib ;;
+            Windows-X64) lib=windows-x64/ghostty_jb.dll ;;
+            Windows-ARM64) lib=windows-aarch64/ghostty_jb.dll ;;
+          esac
+          java native/smoke/GhosttyNative.java "native/dist/$lib"
+
+      # The IntelliJ Platform test harness doesn't support Windows arm64.
       - name: Run binding tests against the shipped library
+        if: matrix.os != 'windows-11-arm'
         run: ./gradlew test --tests "com.github.nihaiden.ghostty.vt.*"
 
   release:
