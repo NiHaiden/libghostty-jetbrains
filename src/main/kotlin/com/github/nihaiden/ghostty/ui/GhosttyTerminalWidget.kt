@@ -126,16 +126,13 @@ class GhosttyTerminalWidget(
             LinkFinder.pwdToPath(pwd)?.let { panel.currentDirectory = it }
         }
 
-        override fun onClipboardWrite(text: String, primary: Boolean): Boolean {
-            if (!settings.allowClipboardWrite) return false
-            edt {
-                if (primary) {
-                    Toolkit.getDefaultToolkit().systemSelection?.setContents(StringSelection(text), null)
-                } else {
-                    CopyPasteManager.getInstance().setContents(StringSelection(text))
-                }
+        // Only reported while OPT_ALLOW_CLIPBOARD_WRITE is on (see TerminalPanel).
+        override fun onClipboardWrite(text: String, primary: Boolean) = edt {
+            if (primary) {
+                Toolkit.getDefaultToolkit().systemSelection?.setContents(StringSelection(text), null)
+            } else {
+                CopyPasteManager.getInstance().setContents(StringSelection(text))
             }
-            return true
         }
 
         override fun onNotification(title: String, body: String) = edt {

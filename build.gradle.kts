@@ -24,6 +24,8 @@ repositories {
 dependencies {
     intellijPlatform {
         intellijIdea(providers.gradleProperty("platformVersion"))
+        // Compiled against; at runtime the Terminal integration is optional (plugin.xml).
+        bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
     }
     testImplementation("junit:junit:4.13.2")
@@ -91,24 +93,24 @@ fun hostPlatform(): String {
 }
 
 fun hostLibraryName(): String = when {
-    hostPlatform().startsWith("windows") -> "ghostty-jb.dll"
-    hostPlatform().startsWith("darwin") -> "libghostty-jb.dylib"
-    else -> "libghostty-jb.so"
+    hostPlatform().startsWith("windows") -> "ghostty_jb.dll"
+    hostPlatform().startsWith("darwin") -> "libghostty_jb.dylib"
+    else -> "libghostty_jb.so"
 }
 
-// Builds libghostty-jb for the host with Zig into native/dist/<platform>/.
+// Builds the native bridge (Rust crate in native/, which builds libghostty-vt
+// with Zig) for the host into native/dist/<platform>/.
 val buildNativeHost = tasks.register<Exec>("buildNativeHost") {
     group = "build"
-    description = "Builds the libghostty-jb native library for the host platform (needs zig 0.16)."
+    description = "Builds the ghostty-jb native library for the host platform (needs cargo and zig 0.16)."
     workingDir = nativeRoot.asFile
-    val prefix = layout.buildDirectory.dir("native-host")
-    commandLine("zig", "build", "-Doptimize=ReleaseFast", "--prefix", prefix.get().asFile.absolutePath)
+    commandLine("cargo", "build", "--release", "--locked")
     inputs.dir(nativeRoot.dir("src"))
-    inputs.file(nativeRoot.file("build.zig"))
-    outputs.dir(prefix)
+    inputs.files(nativeRoot.file("Cargo.toml"), nativeRoot.file("Cargo.lock"), nativeRoot.file("build.rs"), nativeRoot.file("build.zig"))
+    val built = nativeRoot.file("target/release/${hostLibraryName()}").asFile
+    val dest = nativeDistDir.dir(hostPlatform()).asFile
+    outputs.file(built)
     doLast {
-        val built = prefix.get().asFile.walkTopDown().first { it.name == hostLibraryName() }
-        val dest = nativeDistDir.dir(hostPlatform()).asFile
         dest.mkdirs()
         built.copyTo(dest.resolve(built.name), overwrite = true)
     }

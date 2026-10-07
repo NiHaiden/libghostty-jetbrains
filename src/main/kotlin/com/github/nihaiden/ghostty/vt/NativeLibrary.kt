@@ -1,11 +1,10 @@
 package com.github.nihaiden.ghostty.vt
 
-import com.sun.jna.Native
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Locates and loads libghostty-jb.
+ * Locates and loads the native bridge (the `ghostty-jb` Rust crate in native/).
  *
  * Lookup order:
  *  1. the `ghostty.jb.library` system property or `GHOSTTY_JB_LIBRARY`
@@ -17,7 +16,7 @@ object NativeLibrary {
     private val searchRoots = mutableListOf<() -> Path?>()
 
     @Volatile
-    private var loaded: GhosttyJb? = null
+    private var loaded = false
 
     @Volatile
     private var failure: Throwable? = null
@@ -43,9 +42,9 @@ object NativeLibrary {
 
     val libraryFileName: String
         get() = when {
-            platform.startsWith("windows") -> "ghostty-jb.dll"
-            platform.startsWith("darwin") -> "libghostty-jb.dylib"
-            else -> "libghostty-jb.so"
+            platform.startsWith("windows") -> "ghostty_jb.dll"
+            platform.startsWith("darwin") -> "libghostty_jb.dylib"
+            else -> "libghostty_jb.so"
         }
 
     /** Candidate paths in lookup order (for diagnostics). */
@@ -62,15 +61,15 @@ object NativeLibrary {
         return result
     }
 
-    internal fun get(): GhosttyJb {
-        loaded?.let { return it }
+    /** Loads the library once; rethrows the original failure on later calls. */
+    internal fun ensureLoaded() {
+        if (loaded) return
         synchronized(this) {
-            loaded?.let { return it }
+            if (loaded) return
             failure?.let { throw IllegalStateException(it.message, it) }
             try {
-                val lib = load()
-                loaded = lib
-                return lib
+                load()
+                loaded = true
             } catch (t: Throwable) {
                 failure = t
                 throw t
@@ -80,26 +79,23 @@ object NativeLibrary {
 
     /** Returns null if the library can be used, otherwise a human readable reason. */
     fun problem(): String? = try {
-        get()
+        ensureLoaded()
         null
     } catch (t: Throwable) {
         t.message ?: t.toString()
     }
 
-    private fun load(): GhosttyJb {
+    private fun load() {
         val candidates = candidates()
         val path = candidates.firstOrNull { Files.isRegularFile(it) }
             ?: throw UnsatisfiedLinkError(
-                "libghostty-jb for $platform not found. Looked in:\n" +
+                "ghostty-jb native library for $platform not found. Looked in:\n" +
                     candidates.joinToString("\n") { "  $it" },
             )
-        val lib = Native.load(path.toAbsolutePath().toString(), GhosttyJb::class.java)
-        val abi = lib.gjb_abi_version()
+        System.load(path.toAbsolutePath().toString())
+        val abi = GhosttyNative.abiVersion()
         if (abi != GhosttyJb.ABI_VERSION) {
-            throw UnsatisfiedLinkError(
-                "$path has ABI version $abi, expected ${GhosttyJb.ABI_VERSION}",
-            )
+            throw UnsatisfiedLinkError("$path has ABI version $abi, expected ${GhosttyJb.ABI_VERSION}")
         }
-        return lib
     }
 }

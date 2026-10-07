@@ -1,6 +1,6 @@
 package com.github.nihaiden.ghostty.vt
 
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 

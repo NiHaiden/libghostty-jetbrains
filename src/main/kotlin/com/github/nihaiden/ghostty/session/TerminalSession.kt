@@ -40,7 +40,7 @@ class TerminalSession(
         fun onBell() {}
         fun onTitleChanged(title: String) {}
         fun onPwdChanged(pwd: String) {}
-        fun onClipboardWrite(text: String, primary: Boolean): Boolean = false
+        fun onClipboardWrite(text: String, primary: Boolean) {}
         fun onNotification(title: String, body: String) {}
         fun onProgress(state: Int, progress: Int?) {}
         fun onCommandFinished(exitCode: Int?) {}

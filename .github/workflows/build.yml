@@ -12,8 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Rust tests + cross-builds for Linux and Windows (cargo-zigbuild).
   native:
-    name: Native library (all platforms)
+    name: Native library (Linux, Windows)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,30 +25,84 @@ jobs:
         with:
           version: 0.16.0
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu,aarch64-pc-windows-gnullvm
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Lint
+        working-directory: native
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+
       - name: Native tests
         working-directory: native
-        run: zig build test
+        run: cargo test --locked
 
-      # Zig cross-compiles every target from one Linux runner.
-      - name: Build libghostty-jb for all platforms
-        run: native/scripts/build-all.sh native/dist
+      - name: Cross-build
+        run: >-
+          native/scripts/build-all.sh native/dist
+          x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+          x86_64-pc-windows-gnu aarch64-pc-windows-gnullvm
 
       - uses: actions/upload-artifact@v4
         with:
-          name: native
+          name: native-linux-windows
+          path: native/dist
+          if-no-files-found: error
+
+  # macOS libraries are linked natively with Apple's linker and SDK.
+  native-macos:
+    name: Native library (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Native tests
+        working-directory: native
+        run: cargo test --locked
+
+      - name: Build
+        working-directory: native
+        run: |
+          for t in aarch64-apple-darwin:darwin-aarch64 x86_64-apple-darwin:darwin-x64; do
+            cargo build --release --locked --target "${t%%:*}"
+            mkdir -p "dist/${t##*:}"
+            cp "target/${t%%:*}/release/libghostty_jb.dylib" "dist/${t##*:}/"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos
           path: native/dist
           if-no-files-found: error
 
   plugin:
     name: Plugin (test, build, verify)
-    needs: native
+    needs: [native, native-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: native
+          pattern: native-*
+          merge-multiple: true
           path: native/dist
 
       - uses: actions/setup-java@v4
@@ -78,22 +133,23 @@ jobs:
           name: test-reports
           path: build/reports
 
-  # The libraries for macOS and Windows are cross-compiled; make sure they
-  # really load and behave on those systems.
+  # Make sure the shipped libraries (cross-compiled for Windows and Linux
+  # arm64) really load and behave on those systems.
   platform-tests:
     name: Binding tests (${{ matrix.os }})
-    needs: native
+    needs: [native, native-macos]
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-13, windows-latest, ubuntu-24.04-arm]
+        os: [macos-latest, windows-latest, windows-11-arm, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: native
+          pattern: native-*
+          merge-multiple: true
           path: native/dist
 
       - uses: actions/setup-java@v4

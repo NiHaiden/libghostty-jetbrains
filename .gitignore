@@ -9,9 +9,10 @@ build/
 *.iml
 out/
 
-# Zig / native
+# Rust / Zig / native
 native/zig-out/
 native/.zig-cache/
 native/zig-pkg/
 # Built per-platform libraries (produced by native/scripts/build-all.sh or CI)
 native/dist/
+native/target/

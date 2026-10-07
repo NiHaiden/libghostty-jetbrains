@@ -1,14 +1,14 @@
 package com.github.nihaiden.ghostty.vt
 
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 
 /**
- * A captured viewport, decoded from the flat buffer written by gjb_snapshot.
- * See the layout description in native/src/ghostty_jb.h.
+ * A captured viewport, decoded from the flat buffer produced by the native
+ * snapshot. See the layout description in native/src/frame.rs.
  */
 class Frame internal constructor(private val data: IntArray) {
     init {
-        require(data.size >= J.HEADER_INTS && data[J.H_MAGIC] == J.FRAME_MAGIC) { "not a ghostty_jb frame" }
+        require(data.size >= J.HEADER_INTS && data[J.H_MAGIC] == J.FRAME_MAGIC) { "not a ghostty-jb frame" }
     }
 
     val cols: Int get() = data[J.H_COLS]

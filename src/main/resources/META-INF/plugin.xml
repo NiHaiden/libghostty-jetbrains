@@ -14,10 +14,13 @@
       <li>Find in scrollback, clickable URLs and file:line links that open in the editor</li>
       <li>Program notifications (OSC 9), progress (OSC 9;4) and clipboard (OSC 52) support</li>
     </ul>
-    Open it from <b>View | Tool Windows | Ghostty</b> or <b>Open in Ghostty Terminal</b> in the Project view.
+    Open it from <b>View | Tool Windows | Ghostty</b>, <b>Open in Ghostty Terminal</b> in the Project view,
+    or pick <b>Ghostty</b> from the built-in Terminal tool window's new-tab dropdown.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- Optional: adds Ghostty to the Terminal tool window's new-tab dropdown. -->
+    <depends optional="true" config-file="ghostty-terminal.xml">org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="Ghostty"

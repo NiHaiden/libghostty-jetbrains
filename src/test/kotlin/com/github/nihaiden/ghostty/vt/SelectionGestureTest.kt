@@ -1,6 +1,6 @@
 package com.github.nihaiden.ghostty.vt
 
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test

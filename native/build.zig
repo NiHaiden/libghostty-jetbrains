@@ -1,12 +1,13 @@
 const std = @import("std");
 
-// Builds libghostty-jb: a shared library exposing the small ghostty_jb.h
-// facade, with libghostty-vt linked in statically. One self-contained
-// native file per platform is all the plugin has to ship.
+// Builds libghostty-vt as static archives for the Rust crate in this
+// directory (see build.rs, which runs this). Installs into <prefix>/lib:
 //
-//   zig build -Doptimize=ReleaseFast                      host platform
-//   zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos
-//   zig build test                                        run the C tests
+//   libghostty-vt-static.a   (or ghostty-vt-static.lib on Windows)
+//   + every static library it links (simdutf, highway, ...), which Zig
+//     does not merge into the main archive.
+//
+//   zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-gnu --prefix out
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -16,56 +17,16 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }) orelse return;
     const vt = ghostty.artifact("ghostty-vt-static");
+    b.installArtifact(vt);
+    installLinkedStatics(b, vt);
+}
 
-    const c_flags: []const []const u8 = &.{
-        "-std=c11",
-        "-Wall",
-        "-Wextra",
-        "-Wno-unused-parameter",
-        "-DGHOSTTY_STATIC",
-        "-fvisibility=hidden",
+fn installLinkedStatics(b: *std.Build, artifact: *std.Build.Step.Compile) void {
+    for (artifact.root_module.link_objects.items) |obj| switch (obj) {
+        .other_step => |dep| if (dep.kind == .lib and dep.linkage == .static) {
+            b.installArtifact(dep);
+            installLinkedStatics(b, dep);
+        },
+        else => {},
     };
-
-    const lib_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .pic = true,
-        .strip = optimize != .Debug,
-    });
-    lib_mod.addCSourceFiles(.{
-        .root = b.path("src"),
-        .files = &.{"ghostty_jb.c"},
-        .flags = c_flags,
-    });
-    lib_mod.addIncludePath(b.path("src"));
-    lib_mod.linkLibrary(vt);
-
-    const lib = b.addLibrary(.{
-        .name = "ghostty-jb",
-        .linkage = .dynamic,
-        .root_module = lib_mod,
-    });
-    b.installArtifact(lib);
-
-    // Tests: a C program that drives the facade the same way the plugin does.
-    const test_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    test_mod.addCSourceFiles(.{
-        .root = b.path("."),
-        .files = &.{ "test/test_main.c", "src/ghostty_jb.c" },
-        .flags = c_flags,
-    });
-    test_mod.addIncludePath(b.path("src"));
-    test_mod.linkLibrary(vt);
-    const test_exe = b.addExecutable(.{
-        .name = "ghostty_jb_test",
-        .root_module = test_mod,
-    });
-    const run_tests = b.addRunArtifact(test_exe);
-    const test_step = b.step("test", "Run the native facade tests");
-    test_step.dependOn(&run_tests.step);
 }

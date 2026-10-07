@@ -20,16 +20,36 @@ import java.awt.BorderLayout
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 
-/** Owns the Ghostty tool window's tabs for a project. */
+/**
+ * Opens Ghostty tabs for a project, either in the Ghostty tool window or in
+ * the IDE's built-in Terminal tool window (as foreign tabs next to the
+ * built-in terminal's own; the Terminal plugin has no API to swap its engine).
+ */
 @Service(Service.Level.PROJECT)
 class GhosttyTerminalManager(private val project: Project) {
 
-    private val toolWindow: ToolWindow?
-        get() = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)
+    private fun toolWindow(id: String): ToolWindow? = ToolWindowManager.getInstance(project).getToolWindow(id)
 
-    /** Opens a new terminal tab (showing the tool window) in [workingDirectory] or the project root. */
+    /**
+     * Opens a new terminal tab (showing its tool window) in [workingDirectory]
+     * or the project root, in the tool window chosen in the settings.
+     */
     fun createTab(workingDirectory: String? = null, requestFocus: Boolean = true) {
-        val tw = toolWindow ?: return
+        val preferTerminal =
+            GhosttySettings.getInstance().state.tabLocation == GhosttySettings.TabLocation.TERMINAL_TOOL_WINDOW
+        val tw = (if (preferTerminal) toolWindow(TERMINAL_TOOL_WINDOW_ID) else null)
+            ?: toolWindow(TOOL_WINDOW_ID)
+            ?: return
+        openIn(tw, workingDirectory, requestFocus)
+    }
+
+    /** Opens a Ghostty tab in the built-in Terminal tool window (the Ghostty one if it's missing). */
+    fun createTabInTerminalToolWindow(workingDirectory: String? = null) {
+        val tw = toolWindow(TERMINAL_TOOL_WINDOW_ID) ?: toolWindow(TOOL_WINDOW_ID) ?: return
+        openIn(tw, workingDirectory, requestFocus = true)
+    }
+
+    private fun openIn(tw: ToolWindow, workingDirectory: String?, requestFocus: Boolean) {
         tw.activate({ addTab(tw, workingDirectory, requestFocus) }, requestFocus)
     }
 
@@ -61,7 +81,8 @@ class GhosttyTerminalManager(private val project: Project) {
         }
 
         widget.panel.host = object : TerminalPanel.Host {
-            override fun newTab() = createTab(widget.workingDirectory)
+            // New tabs open next to this one, in whichever tool window it lives.
+            override fun newTab() = openIn(tw, widget.workingDirectory, requestFocus = true)
             override fun closeTab() {
                 cm.removeContent(content, true)
             }
@@ -97,8 +118,14 @@ class GhosttyTerminalManager(private val project: Project) {
         return content
     }
 
+    /** The selected Ghostty tab, preferring the active tool window. */
     val activeWidget: GhosttyTerminalWidget?
-        get() = toolWindow?.contentManager?.selectedContent?.getUserData(WIDGET_KEY)
+        get() {
+            val active = ToolWindowManager.getInstance(project).activeToolWindowId
+            return listOfNotNull(active, TOOL_WINDOW_ID, TERMINAL_TOOL_WINDOW_ID).distinct().firstNotNullOfOrNull {
+                toolWindow(it)?.contentManager?.selectedContent?.getUserData(WIDGET_KEY)
+            }
+        }
 
     private fun errorPanel(message: String) = JPanel(BorderLayout()).apply {
         border = JBUI.Borders.empty(16)
@@ -118,6 +145,8 @@ class GhosttyTerminalManager(private val project: Project) {
 
     companion object {
         const val TOOL_WINDOW_ID = "Ghostty"
+        /** The bundled Terminal plugin's tool window. */
+        const val TERMINAL_TOOL_WINDOW_ID = "Terminal"
         private val LOG = logger<GhosttyTerminalManager>()
         private val WIDGET_KEY = com.intellij.openapi.util.Key.create<GhosttyTerminalWidget>("Ghostty.Widget")
 

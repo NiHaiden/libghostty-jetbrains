@@ -3,7 +3,7 @@ package com.github.nihaiden.ghostty.ui
 import com.github.nihaiden.ghostty.session.TerminalSession
 import com.github.nihaiden.ghostty.settings.GhosttySettings
 import com.github.nihaiden.ghostty.vt.Frame
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 import com.github.nihaiden.ghostty.vt.GhosttyKey
 import com.github.nihaiden.ghostty.vt.GhosttyTerminal
 import com.github.nihaiden.ghostty.vt.KeyMapper
@@ -203,6 +203,7 @@ class TerminalPanel(
             },
         )
         terminal.setOption(J.OPT_CURSOR_BLINK, if (s.cursorBlink) 1 else 0)
+        terminal.setOption(J.OPT_ALLOW_CLIPBOARD_WRITE, if (s.allowClipboardWrite) 1 else 0)
         terminal.setOption(J.OPT_OPTION_AS_ALT, if (SystemInfo.isMac && s.optionAsAlt) 1 else 0)
         val interval = Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Int ?: 500
         terminal.setOption(J.OPT_CLICK_INTERVAL_MS, interval.toLong())

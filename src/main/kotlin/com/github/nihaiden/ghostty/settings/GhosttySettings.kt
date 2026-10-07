@@ -16,6 +16,7 @@ class GhosttySettings : PersistentStateComponent<GhosttySettings.State> {
     enum class ColorSource { IDE, GHOSTTY_DEFAULT, GHOSTTY_THEME_FILE }
     enum class CursorStyle { BLOCK, BAR, UNDERLINE }
     enum class Bell { VISUAL, AUDIBLE, NONE }
+    enum class TabLocation { GHOSTTY_TOOL_WINDOW, TERMINAL_TOOL_WINDOW }
 
     class State {
         /** Shell command line; empty = detect ($SHELL, PowerShell on Windows). */
@@ -58,6 +59,13 @@ class GhosttySettings : PersistentStateComponent<GhosttySettings.State> {
 
         var bell: Bell = Bell.VISUAL
         var closeTabOnExit: Boolean = true
+
+        /**
+         * Where New Ghostty Tab / Open in Ghostty put tabs. The Terminal
+         * tool window needs the bundled Terminal plugin; without it the
+         * Ghostty tool window is used.
+         */
+        var tabLocation: TabLocation = TabLocation.GHOSTTY_TOOL_WINDOW
 
         /** Draw box drawing / block elements geometrically so lines join up. */
         var builtinBoxDrawing: Boolean = true

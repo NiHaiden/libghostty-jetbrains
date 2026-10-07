@@ -1,6 +1,6 @@
 package com.github.nihaiden.ghostty.vt
 
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -21,9 +21,8 @@ class GhosttyTerminalTest {
         override fun onTitleChanged(title: String) {
             this@GhosttyTerminalTest.title = title
         }
-        override fun onClipboardWrite(text: String, primary: Boolean): Boolean {
+        override fun onClipboardWrite(text: String, primary: Boolean) {
             clipboard = text
-            return true
         }
     })
 
@@ -66,6 +65,9 @@ class GhosttyTerminalTest {
         write("\u001b]0;hello\u0007")
         assertEquals("hello", title)
         assertEquals("hello", term.title)
+        write("\u001b]52;c;aGk=\u0007")
+        assertEquals(null, clipboard) // off by default
+        term.setOption(J.OPT_ALLOW_CLIPBOARD_WRITE, 1)
         write("\u001b]52;c;aGk=\u0007")
         assertEquals("hi", clipboard)
     }

@@ -31,6 +31,10 @@ adds a pty, a Java2D renderer of libghostty's render state, and IDE integration.
 **IDE integration**
 - *Ghostty* tool window with tabs, *New Ghostty Tab* and **Open in Ghostty Terminal** for
   any file or directory (Project view, editor tabs, *Open In* menu)
+- **Ghostty in the built-in Terminal tool window**: pick *Ghostty* from the Terminal's
+  new-tab dropdown (<kbd>+</kbd> ▾), or set *Open new tabs in: Terminal tool window* so every
+  Ghostty tab lands there (see [below](#the-built-in-terminal-tool-window) for what this
+  can and can't do)
 - Colors follow the IDE's console color scheme (or use Ghostty's defaults, or any
   Ghostty theme / config file) and update live when the scheme changes
 - Font follows the editor's console font; zoom with <kbd>Ctrl</kbd>+wheel
@@ -62,79 +66,130 @@ adds a pty, a Java2D renderer of libghostty's render state, and IDE integration.
 
 Settings live in **Settings | Tools | Ghostty Terminal**.
 
+## The built-in Terminal tool window
+
+JetBrains' Terminal plugin has **no extension point for swapping its terminal engine**,
+so Ghostty can't be selected as "the" backend that <kbd>Alt</kbd>+<kbd>F12</kbd> or the
+plain <kbd>+</kbd> button use. What the plugin does instead, through public APIs only:
+
+- registers an `openPredefinedTerminalProvider`, so **Ghostty** appears in the Terminal
+  tool window's new-session dropdown (<kbd>+</kbd> ▾) next to the detected shells;
+- hosts Ghostty tabs inside the Terminal tool window, side by side with the built-in
+  terminal's own tabs (Settings → *Open new tabs in*).
+
+| | |
+|---|---|
+| ![Ghostty in the Terminal new-tab dropdown](docs/images/terminal-dropdown.png) | ![A Ghostty tab in the Terminal tool window](docs/images/terminal-tab.png) |
+
+The integration is an optional dependency: without the Terminal plugin (e.g. in
+some IDEs or when it's disabled) the Ghostty tool window keeps working on its own.
+The built-in terminal's own tab actions (rename session, split, …) don't apply to
+Ghostty tabs; Ghostty's context menu has its own.
+
 ## Architecture
 
 ```
-┌──────────────────────── JetBrains IDE (JVM) ────────────────────────┐
-│ GhosttyToolWindowFactory ─ GhosttyTerminalManager (tabs)            │
-│        │                                                            │
-│ GhosttyTerminalWidget ── TerminalPanel (input, selection, links)    │
-│        │                    │   └─ TerminalRenderer (Java2D, boxes) │
-│        │                    │                                       │
-│ TerminalSession ── pty4j ── shell                                   │
-│        │                                                            │
-│ GhosttyTerminal (Kotlin, thread-safe) ── JNA                        │
-└────────│────────────────────────────────────────────────────────────┘
+┌──────────────────────────── JetBrains IDE (JVM) ────────────────────────────┐
+│ Ghostty tool window / Terminal tool window ── GhosttyTerminalManager (tabs) │
+│        │                                                                    │
+│ GhosttyTerminalWidget ── TerminalPanel (input, selection, links)            │
+│        │                    │   └─ TerminalRenderer (Java2D, boxes)         │
+│ TerminalSession ── pty4j ── shell                                           │
+│        │                                                                    │
+│ GhosttyTerminal (Kotlin) ── GhosttyNative (JNI, opaque long handles)        │
+└────────│────────────────────────────────────────────────────────────────────┘
          ▼
- libghostty-jb (C, ~25 functions)   native/src/ghostty_jb.{h,c}
+ ghostty-jb (Rust cdylib)          native/src
+   jni_api.rs  JNI exports, handle registry, events      (safe Rust)
+   term.rs     frames, holds, gestures, search, policy   (safe Rust)
+   vt/         RAII wrappers over the C API              (the only unsafe code)
          │  statically linked
          ▼
- libghostty-vt (Zig)                native/vendor/ghostty (git submodule)
+ libghostty-vt (Zig)               native/vendor/ghostty (git submodule)
 ```
 
-The C API of libghostty-vt is rich, fine-grained and explicitly unstable. Instead of
-binding it directly, the plugin talks to a small facade, **libghostty-jb**, which:
+The C API of libghostty-vt is rich, fine-grained and explicitly unstable. The plugin
+doesn't bind it from Kotlin; a small Rust crate, **ghostty-jb**, sits in between and:
 
-- exposes only primitives, pointers and `int32` lengths, so it's trivial to bind with
-  JNA (bundled with every JetBrains IDE) and identical across 64-bit platforms;
-- captures a whole frame in **one** native call (`gjb_snapshot`) into a flat `int32`
-  buffer (cells, colors, attributes, cursor, scrollbar, selection and search
-  highlights) instead of thousands of per-cell calls across the JVM boundary;
-- owns libghostty policy that every embedder needs: device attribute replies,
-  synchronized-output render holds with a timeout, the selection gesture state
-  machine, incremental search;
-- absorbs upstream API churn, so the Kotlin side only depends on
-  [`ghostty_jb.h`](native/src/ghostty_jb.h).
+- captures a whole frame in **one** JNI call (`snapshot`) as a flat `int[]` (cells,
+  colors, attributes, cursor, scrollbar, selection and search highlights) instead of
+  thousands of per-cell calls across the JVM boundary;
+- owns libghostty policy every embedder needs: device attribute replies, synchronized
+  output render holds with a timeout, the selection gesture state machine, incremental
+  search, OSC 52 clipboard policy;
+- absorbs upstream API churn, so Kotlin only depends on ~25 JNI functions.
+
+### Unsafe code
+
+The crate is `#![deny(unsafe_code)]`. Exactly one module, `vt/`, may use `unsafe`, and it
+exists to make the C API impossible to misuse from the rest of the crate:
+
+- every libghostty object is an RAII owner (`Drop` frees it; no manual `free` anywhere);
+- mutation takes `&mut self`, so the borrow checker enforces libghostty's
+  "not thread-safe, don't alias" rules; render-state rows/cells are lending iterators
+  that can't outlive the frame they point into;
+- libghostty's callbacks never dereference a `void *userdata`: the callback context is
+  lent to a thread-local only for the duration of each libghostty call;
+- values coming from Java are validated before they reach Zig (an out-of-range enum is
+  illegal behaviour there), and the tests run against a `ReleaseSafe` libghostty build
+  so misuse would trap instead of corrupting memory.
+
+`term.rs` and `jni_api.rs` (≈1,000 lines) contain no `unsafe` at all; `vt/` (≈2,000
+lines) has ~120 small `unsafe` blocks, almost all single FFI calls. Java never sees a
+pointer: terminals are opaque `long` ids in a registry, so a stale or bogus id throws
+`IllegalStateException` instead of touching freed memory. Rust panics are caught at the
+JNI boundary and become Java exceptions. The FFI declarations are generated with
+bindgen (`scripts/gen-bindings.sh`) and checked by layout assertions.
+
+Not everything unsafe is gone, to be clear: libghostty itself is Zig, the vendored
+simdutf/highway are C++, and the `jni` crate's macros expand to `unsafe` internally.
+
+### Data flow
 
 Output from the shell is read on a background thread and fed straight into libghostty;
 the UI is only told that something changed and pulls a frame when it paints, so
 rendering is naturally rate-limited by Swing and heavy output never floods the EDT.
-Libghostty's dirty tracking means an idle terminal costs nothing to repaint.
+libghostty's dirty tracking means an idle terminal costs nothing to repaint.
 
-One shared library per platform (≈2 MB, no runtime dependencies beyond the C runtime)
-is cross-compiled from a single machine with Zig and shipped inside the plugin as
-`native/<os>-<arch>/`.
+One shared library per platform (≈3 MB, no runtime dependencies beyond the C runtime)
+is shipped inside the plugin as `native/<os>-<arch>/`.
 
 ## Building
 
-Requirements: JDK 21 and, for the native library, [Zig 0.16](https://ziglang.org/download/).
+Requirements: JDK 21, Rust ≥ 1.88 and [Zig 0.16](https://ziglang.org/download/) (Cargo's
+build script builds libghostty-vt with Zig).
 
 ```sh
 git clone --recursive https://github.com/nihaiden/libghostty-jetbrains
 cd libghostty-jetbrains
 
-./gradlew buildNativeHost      # native library for this machine -> native/dist/<os>-<arch>
+./gradlew buildNativeHost      # cargo build --release -> native/dist/<os>-<arch>
 ./gradlew runIde               # launch a sandbox IDE with the plugin
-./gradlew test                 # native-backed binding tests + headless rendering tests
+./gradlew test                 # JNI binding tests + headless rendering tests
 ./gradlew buildPlugin          # build/distributions/libghostty-jetbrains-<version>.zip
 ./gradlew verifyPlugin -PverifyIdes=2025.3.6,2026.2.3   # JetBrains Plugin Verifier
+
+(cd native && cargo test)      # Rust tests of the facade, against ReleaseSafe libghostty
 ```
 
-To build the native library for **every** platform (Linux x64/arm64 with glibc ≥ 2.28,
-macOS x64/arm64 ≥ 11, Windows x64/arm64):
+To build the native library for **every** platform from Linux (glibc ≥ 2.28 on Linux,
+macOS ≥ 11, Windows 10+ x64/arm64), install
+[cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) and the Rust targets, then:
 
 ```sh
+rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+  x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-gnu aarch64-pc-windows-gnullvm
 native/scripts/build-all.sh          # -> native/dist/{linux,darwin,windows}-{x64,aarch64}/
-(cd native && zig build test)        # C tests of the facade
 ```
 
 `buildPlugin` packages whatever is in `native/dist`. CI
-([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds all platforms,
-runs the tests on Linux, macOS (arm64 and x64), Windows and Linux arm64, runs the
-JetBrains Plugin Verifier and attaches the plugin zip to tagged releases.
+([`.github/workflows/build.yml`](.github/workflows/build.yml)) lints and tests the crate,
+cross-builds Linux and Windows with cargo-zigbuild, builds macOS natively with Apple's
+toolchain, runs the binding tests on Linux, macOS arm64, Windows x64/arm64 and Linux arm64,
+runs the JetBrains Plugin Verifier and attaches the plugin zip to tagged releases.
 
 During development you can point the plugin at any build of the library with
-`-Dghostty.jb.library=/path/to/libghostty-jb.so` (or `GHOSTTY_JB_LIBRARY`).
+`-Dghostty.jb.library=/path/to/libghostty_jb.so` (or `GHOSTTY_JB_LIBRARY`).
 
 > Behind a proxy where Zig can't download dependencies itself,
 > `native/scripts/prefetch-zig-deps.sh native` fetches them with curl/git first.
@@ -143,7 +198,8 @@ During development you can point the plugin at any build of the library with
 
 ```sh
 git -C native/vendor/ghostty fetch --depth 1 origin <commit> && git -C native/vendor/ghostty checkout <commit>
-(cd native && zig build test)        # the facade's tests catch API changes
+native/scripts/gen-bindings.sh       # regenerate src/sys/bindings.rs (needs bindgen-cli)
+(cd native && cargo test)            # compile errors + tests catch API changes
 native/scripts/gen-kotlin-keys.py    # regenerate key codes if the key enum changed
 ```
 
@@ -151,34 +207,40 @@ native/scripts/gen-kotlin-keys.py    # regenerate key codes if the key enum chan
 
 | Path | What |
 |---|---|
-| `native/src/ghostty_jb.{h,c}` | The C facade over libghostty-vt |
-| `native/test/test_main.c` | C tests for the facade |
-| `native/build.zig` | Builds the shared library (and tests) against the submodule |
-| `native/scripts/` | Cross-compile, dependency prefetch, key code generator |
-| `src/main/kotlin/.../vt/` | JNA binding, `GhosttyTerminal`, frame decoding, key mapping |
+| `native/src/vt/` | Safe RAII wrappers over libghostty-vt (the only `unsafe` code) |
+| `native/src/term.rs`, `frame.rs` | The terminal facade and the frame layout shared with Kotlin |
+| `native/src/jni_api.rs` | JNI exports for `GhosttyNative` |
+| `native/src/sys/` | bindgen output for libghostty-vt's C headers |
+| `native/tests/` | Rust tests of the facade |
+| `native/build.rs`, `build.zig` | Build libghostty-vt with Zig and link it statically |
+| `native/scripts/` | Cross-compile, bindings and key code generators, dependency prefetch |
+| `src/main/kotlin/.../vt/` | JNI binding, `GhosttyTerminal`, frame decoding, key mapping |
 | `src/main/kotlin/.../session/` | pty4j process, environment and shell detection |
 | `src/main/kotlin/.../ui/` | Panel (input), renderer, fonts, theme, box drawing, find bar, links |
 | `src/main/kotlin/.../toolwindow/` | Tool window and tab management |
+| `src/main/kotlin/.../integration/` | The built-in Terminal tool window integration |
 | `src/main/kotlin/.../settings/` | Persistent settings and the settings page |
 
 ## Status and limitations
 
 This is a young project. What has been verified:
 
-- the native facade (C tests) and the Kotlin binding (JUnit, against the real library);
+- the Rust facade (cargo tests) and the Kotlin binding (JUnit, against the real library);
 - headless rendering tests (cursor, colors, selection, box drawing, search overlay);
 - end-to-end in IntelliJ IDEA 2025.3 on Linux: bash, vim, scrollback, search,
-  selection, links, tabs, settings, ~7 MB/s of output while rendering.
+  selection, links, tabs, settings, ~7 MB/s of output while rendering, and Ghostty
+  tabs opened from the built-in Terminal tool window's dropdown.
 
 Not yet done or known gaps:
 
-- macOS and Windows libraries are cross-compiled and covered by CI binding tests, but the
-  UI hasn't been exercised by hand on those systems yet (keyboard edge cases like dead
-  keys and IME composition are the most likely to need work).
+- macOS and Windows libraries are covered by CI binding tests, but the UI hasn't been
+  exercised by hand on those systems yet (keyboard edge cases like dead keys and IME
+  composition are the most likely to need work). macOS x64 has no CI runner anymore, so
+  that library is built but not tested.
 - Kitty graphics protocol images are parsed by libghostty but not drawn.
 - No ligatures (cells are positioned individually, like most terminals by default).
-- It's a separate tool window; it doesn't replace the IDE's built-in *Terminal*
-  (there's no public extension point for a terminal engine).
+- It can't replace the built-in *Terminal*'s engine (no public extension point); see
+  [above](#the-built-in-terminal-tool-window) for how it plugs into that tool window.
 - No shell integration scripts are injected; OSC 7 / OSC 133 work when your shell emits them.
 - `TERM` is `xterm-256color` because `xterm-ghostty` terminfo is rarely installed.
 

@@ -45,6 +45,18 @@ class GhosttyConfigurable : BoundSearchableConfigurable("Ghostty Terminal", "gho
             row {
                 checkBox("Close tab when the shell exits successfully").bindSelected(state::closeTabOnExit)
             }
+            row("Open new tabs in:") {
+                comboBox(
+                    EnumComboBoxModel(GhosttySettings.TabLocation::class.java),
+                    textListCellRenderer {
+                        when (it) {
+                            GhosttySettings.TabLocation.TERMINAL_TOOL_WINDOW -> "Terminal tool window"
+                            else -> "Ghostty tool window"
+                        }
+                    },
+                ).bindItem(state::tabLocation.toNullableProperty())
+                    .comment("The Terminal tool window's new-tab dropdown (+ ▾) always offers <b>Ghostty</b>")
+            }
         }
 
         group("Appearance") {

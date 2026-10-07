@@ -1,0 +1,23 @@
+[package]
+name = "ghostty-jb"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+description = "JNI bridge between the Ghostty JetBrains plugin and libghostty-vt"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "ghostty_jb"
+# cdylib: the library the plugin loads. rlib: for integration tests.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = "0.22.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind" # JNI entry points catch panics and turn them into Java exceptions
+strip = true

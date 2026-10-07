@@ -1,0 +1,7 @@
+<!-- Loaded only when the bundled Terminal plugin is enabled. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="org.jetbrains.plugins.terminal">
+        <openPredefinedTerminalProvider
+                implementation="com.github.nihaiden.ghostty.integration.GhosttyPredefinedTerminalProvider"/>
+    </extensions>
+</idea-plugin>

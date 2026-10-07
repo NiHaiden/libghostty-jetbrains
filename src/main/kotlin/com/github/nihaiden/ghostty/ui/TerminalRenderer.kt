@@ -1,7 +1,7 @@
 package com.github.nihaiden.ghostty.ui
 
 import com.github.nihaiden.ghostty.vt.Frame
-import com.github.nihaiden.ghostty.vt.GhosttyJb.Companion as J
+import com.github.nihaiden.ghostty.vt.GhosttyJb as J
 import com.intellij.ide.ui.AntialiasingType
 import com.intellij.util.ui.JBUI
 import java.awt.BasicStroke
